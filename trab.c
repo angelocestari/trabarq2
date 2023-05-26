@@ -3,9 +3,9 @@
 
 int main()
 {
-    FILE *fp = fopen("bubblesort_text.bin", "rb");
+    FILE *fp = fopen("exemplo_text.bin", "rb");
     int32_t instrucao = 0;
-    int32_t opcode, rs, rt = 0;
+    int32_t opcode, rs, rt, rd, shamt, funct = 0;
     int16_t imm = 0;
 
     if (fp == NULL)
@@ -31,9 +31,30 @@ int main()
     // 00000000000000001111111111111111 = 0xffff
 
     opcode = (instrucao & (0x3f << 26)) >> 26;
-    rs     = (instrucao & (0x1f << 21)) >> 21;
-    rt     = (instrucao & (0x1f << 16)) >> 16;
-    imm    = (instrucao & 0xffff);
+    
+    switch (opcode)
+    {
+    case 0:
+        rs     = (instrucao & (0x1f << 21)) >> 21;
+        rt     = (instrucao & (0x1f << 16)) >> 16;
+        rd    = (instrucao & (0x1f << 11)) >> 11;
+        shamt    = (instrucao & (0x1f << 6)) >> 6;
+        funct    = instrucao & 0x1f;
+        printf("%d, %d, %d, %d, %d, %d\n", opcode, rs, rt, rd, shamt, funct);
+        switch (funct)
+        {
+        case 0x20:
+            printf("add(%d) %d, %d, %d, %d, %d\n", opcode, rs, rt, rd, shamt, funct);
+            break;
+        
+        default:
+            break;
+        }
+        break;
+    
+    default:
+        break;
+    }
 
     if (opcode == 8)
     {
