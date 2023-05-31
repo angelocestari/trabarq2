@@ -80,6 +80,8 @@ bool j_instru(word instruction) {
         case 0x3: // jal - jump and link
             printf("jal(%d) %d\n", opcode, address);
             return false;
+        default:
+            return true;
     }
 }
 
@@ -134,18 +136,23 @@ bool i_instru(word instruction) {
         case 0x2b: // sw - store word
             printf("sw(%d) %d %d %d\n", opcode, rs, rt, imm);
             return false;
+        default:
+            return true;
     }
 }
 
-long calFileSize(FILE *fp) {
+long calcFileSize(FILE *fp) {
     fseek(fp, 0L, SEEK_END);
     long fileSize = ftell(fp) / 4;
     fseek(fp, 0L, SEEK_SET);
     return fileSize;
 }
 
-void memoryAlocattion() {
-    
+void memoryAlocattion(FILE *fp, FILE *fp1, byte* memory){
+    byte* memory_start = memory;
+    memset(memory, 0, sizeof(memory));
+    fread(memory_start, 1, sizeof(memory), fp);
+    fread(memory_start + 0x2000, 1, sizeof(memory), fp1);
 }
 
 int main()
@@ -153,15 +160,23 @@ int main()
     FILE *fp = fopen("exemplo_text.bin", "rb");
     FILE *fp1 = fopen("exemplo_data.bin", "rb");
     word instrucao, opcode, param_r_instr;
-
+    
     byte memory[4096 * 4];
     byte* memory_start = memory;
     memset(memory, 0, sizeof(memory));
     fread(memory_start, 1, sizeof(memory), fp);
     fread(memory_start + 0x2000, 1, sizeof(memory), fp1);
 
-    for (size_t i = 0; i < sizeof(memory); i += 4) {
-        printf("%02x%02x%02x%02x\n", memory[i], memory[i+1], memory[i+2], memory[i+3]); 
+    uint32_t *wordPtr = (uint32_t *)&memory[20];
+    *wordPtr = 0x12345678;
+    uint32_t myWord = *wordPtr;
+
+    for (int i = 0; i < sizeof(memory); i += 16) {
+        printf("Mem[0x%08x] ", i);
+        printf("%02x%02x%02x%02x ", memory[i], memory[i+1], memory[i+2], memory[i+3]); 
+        printf("%02x%02x%02x%02x ", memory[i+4], memory[i+5], memory[i+6], memory[i+7]); 
+        printf("%02x%02x%02x%02x ", memory[i+8], memory[i+9], memory[i+10], memory[i+11]); 
+        printf("%02x%02x%02x%02x\n", memory[i+12], memory[i+13], memory[i+14], memory[i+15]); 
     }
 
     if (fp == NULL)
@@ -169,7 +184,7 @@ int main()
         printf("Ihhh, deu erro.\n");
         return 1;
     }
-    long fileSize = calFileSize(fp);
+    long fileSize = calcFileSize(fp);
     
     for(int i = 0; i < fileSize; i++) {
         fread(&instrucao, 4, 1, fp);
