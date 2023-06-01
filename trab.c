@@ -1,6 +1,7 @@
 #include "trab.h"
 
-bool r_instru(word instruction) {
+bool r_instru(word instruction, word *registers, word *specialRegisters) {
+    registers[0] = 0x19;
     byte rs, rt, rd, shamt, funct;
     rs = (instruction & (0x1f << 21)) >> 21;
     rt = (instruction & (0x1f << 16)) >> 16;
@@ -44,6 +45,7 @@ bool r_instru(word instruction) {
 
     case 0x20: // add - add
         printf("add(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        // registers[rd] = registers[rs];
         return false;
 
     case 0x22: // sub - substract
@@ -148,11 +150,24 @@ long calcFileSize(FILE *fp) {
     return fileSize;
 }
 
-void memoryAlocattion(FILE *fp, FILE *fp1, byte* memory){
-    byte* memory_start = memory;
-    memset(memory, 0, sizeof(memory));
-    fread(memory_start, 1, sizeof(memory), fp);
-    fread(memory_start + 0x2000, 1, sizeof(memory), fp1);
+void memoryAlocattion(FILE *fp, FILE *fp1, byte* memory, int sizeMemory){
+    memset(memory, 0, sizeMemory);
+    fread(memory, sizeof(byte), (sizeMemory / 4), fp);
+    fread(&memory[0x2000], sizeof(byte), (sizeMemory / 4), fp1);
+}
+
+void printMemory(byte *memory) {
+    for (int i = 0; i < 32; i += 1) {
+        printf("$%-2d 0x%08x\n", i, *(word*)&memory[0x3fff - ((i + 1) * 4)]); 
+    }
+
+    for (int i = 0; i <= 0x3ff0; i += 16) {
+        printf("Mem[0x%08x] ", i);
+        printf("0x%08x ", *(word*)&memory[i]); 
+        printf("0x%08x ", *(word*)&memory[i+4]); 
+        printf("0x%08x ", *(word*)&memory[i+8]); 
+        printf("0x%08x\n", *(word*)&memory[i+12]); 
+    }
 }
 
 int main()
@@ -160,24 +175,53 @@ int main()
     FILE *fp = fopen("exemplo_text.bin", "rb");
     FILE *fp1 = fopen("exemplo_data.bin", "rb");
     word instrucao, opcode, param_r_instr;
-    
+
+    word *registers[32];
+    word *specialRegisters[3];
+
     byte memory[4096 * 4];
-    byte* memory_start = memory;
-    memset(memory, 0, sizeof(memory));
-    fread(memory_start, 1, sizeof(memory), fp);
-    fread(memory_start + 0x2000, 1, sizeof(memory), fp1);
+    memoryAlocattion(fp, fp1, memory, sizeof(memory));
+    
 
-    uint32_t *wordPtr = (uint32_t *)&memory[20];
-    *wordPtr = 0x12345678;
-    uint32_t myWord = *wordPtr;
+    registers[0] = (word *)&memory[0x3fff - 4]; // $zero 
+    registers[1] = (word *)&memory[0x3fff - 8]; // $at  
+    registers[2] = (word *)&memory[0x3fff - 12]; // $v0 
+    registers[3] = (word *)&memory[0x3fff - 16]; // $v1 
+    registers[4] = (word *)&memory[0x3fff - 20]; // $a0 
+    registers[5] = (word *)&memory[0x3fff - 24]; // $a1 
+    registers[6] = (word *)&memory[0x3fff - 28]; // $a2 
+    registers[7] = (word *)&memory[0x3fff - 32]; // $a3 
+    registers[8] = (word *)&memory[0x3fff - 36]; // $t0 
+    registers[9] = (word *)&memory[0x3fff - 40]; // $t1 
+    registers[10] = (word *)&memory[0x3fff - 44]; // $t2 
+    registers[11] = (word *)&memory[0x3fff - 48]; // $t3 
+    registers[12] = (word *)&memory[0x3fff - 52]; // $t4 
+    registers[13] = (word *)&memory[0x3fff - 56]; // $t5 
+    registers[14] = (word *)&memory[0x3fff - 60]; // $t6 
+    registers[15] = (word *)&memory[0x3fff - 64]; // $t7 
+    registers[16] = (word *)&memory[0x3fff - 68]; // $s0 
+    registers[17] = (word *)&memory[0x3fff - 72]; // $s1 
+    registers[18] = (word *)&memory[0x3fff - 76]; // $s2 
+    registers[19] = (word *)&memory[0x3fff - 80]; // $s3 
+    registers[20] = (word *)&memory[0x3fff - 84]; // $s4 
+    registers[21] = (word *)&memory[0x3fff - 88]; // $s5 
+    registers[22] = (word *)&memory[0x3fff - 92]; // $s6 
+    registers[23] = (word *)&memory[0x3fff - 96]; // $s7 
+    registers[24] = (word *)&memory[0x3fff - 100]; // $t8 
+    registers[25] = (word *)&memory[0x3fff - 104]; // $s9 
+    registers[26] = (word *)&memory[0x3fff - 108]; // $k0 
+    registers[27] = (word *)&memory[0x3fff - 112]; // $k1 
+    registers[28] = (word *)&memory[0x3fff - 116]; // $gp 
+    registers[29] = (word *)&memory[0x3fff - 120]; // $sp 
+    registers[30] = (word *)&memory[0x3fff - 124]; // $fp 
+    registers[31] = (word *)&memory[0x3fff - 128]; // $ra 
 
-    for (int i = 0; i < sizeof(memory); i += 16) {
-        printf("Mem[0x%08x] ", i);
-        printf("%02x%02x%02x%02x ", memory[i], memory[i+1], memory[i+2], memory[i+3]); 
-        printf("%02x%02x%02x%02x ", memory[i+4], memory[i+5], memory[i+6], memory[i+7]); 
-        printf("%02x%02x%02x%02x ", memory[i+8], memory[i+9], memory[i+10], memory[i+11]); 
-        printf("%02x%02x%02x%02x\n", memory[i+12], memory[i+13], memory[i+14], memory[i+15]); 
-    }
+    specialRegisters[0] = (word *)&memory[0x3fff - 132]; // pc
+    specialRegisters[1] = (word *)&memory[0x3fff - 136]; // hi
+    specialRegisters[2] = (word *)&memory[0x3fff - 140]; // lo
+
+    *registers[29] = 0x00003ffc;
+    *registers[28] = 0x1800;
 
     if (fp == NULL)
     {
@@ -190,13 +234,12 @@ int main()
         fread(&instrucao, 4, 1, fp);
         printf("instrucao = %#x\n", instrucao);
         opcode = (instrucao & (0x3f << 26)) >> 26;
-        
     
         switch (opcode)
         {
         case 0x0: // R format
             param_r_instr = instrucao & 0x3ffffff;
-            if(r_instru(param_r_instr)) {
+            if(r_instru(param_r_instr, *registers, *specialRegisters)) {
                 raise(SIGFPE);
             }
             break;
@@ -228,6 +271,7 @@ int main()
             return false;
         }
     }
+    printMemory(memory);
 
     fclose(fp);
 
