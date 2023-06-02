@@ -1,6 +1,6 @@
 #include "trab.h"
 
-bool r_instru(word instruction, word *registers[], word *specialRegisters[]) {
+bool r_instru(word instruction, word registers[], word specialRegisters[]) {
     byte rs, rt, rd, shamt, funct;
     rs = (instruction & (0x1f << 21)) >> 21;
     rt = (instruction & (0x1f << 16)) >> 16;
@@ -11,61 +11,73 @@ bool r_instru(word instruction, word *registers[], word *specialRegisters[]) {
     switch (funct)
     {
     case 0x00: // sll - shift left logical
-        *registers[rd] = *registers[rs] << shamt;
+        registers[rd] = registers[rs] << shamt;
+        specialRegisters[0] += 4;
         return false;
 
     case 0x02: // srl - shift right logical
-        *registers[rd] = *registers[rs] >> shamt;
+        registers[rd] = registers[rs] >> shamt;
+        specialRegisters[0] += 4;
         return false;
 
     case 0x3: // sra - shift right arithmetic
         printf("sra(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        specialRegisters[0] += 4;
         return false;
 
     case 0x08: // jr - jump register
-        *specialRegisters[0] = *registers[rs];
+        specialRegisters[0] = registers[rs];
         return false;
 
     case 0x10: // mfohi - move from high
-        *registers[rd] = *specialRegisters[1];
+        registers[rd] = specialRegisters[1];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x12: // mfolo - move from low
-        *registers[rd] = *specialRegisters[2];
+        registers[rd] = specialRegisters[2];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x18: // multi - multiply
-        *specialRegisters[1] = ((int64_t)(*registers[rs] * *registers[rs]) & ((int64_t)0xffffffff << 32)) >> 32;
-        *specialRegisters[2] = (int64_t)(*registers[rs] * *registers[rs]) & 0xffffffff;
+        specialRegisters[1] = ((int64_t)(registers[rs] * registers[rs]) & ((int64_t)0xffffffff << 32)) >> 32;
+        specialRegisters[2] = (int64_t)(registers[rs] * registers[rs]) & 0xffffffff;
+        specialRegisters[0] += 4;
         return false;
 
     case 0x1a: // div - divide
-        *specialRegisters[1] = *registers[rs] % *registers[rt];
-        *specialRegisters[2] = *registers[rs] / *registers[rt];
+        specialRegisters[1] = registers[rs] % registers[rt];
+        specialRegisters[2] = registers[rs] / registers[rt];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x20: // add - add
-        *registers[rd] = *registers[rs] + *registers[rt];
+        registers[rd] = registers[rs] + registers[rt];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x22: // sub - substract
-        *registers[rd] = *registers[rs] - *registers[rt];
+        registers[rd] = registers[rs] - registers[rt];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x24: // and - and
-        *registers[rd] = *registers[rs] & *registers[rt];
+        registers[rd] = registers[rs] & registers[rt];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x25: // or - or 
-        *registers[rd] = *registers[rs] | *registers[rt];
+        registers[rd] = registers[rs] | registers[rt];
+        specialRegisters[0] += 4;
         return false;
 
     case 0x2a: // slt - set less than
-        if(registers[rs] < registers[rt]) {
-            *registers[rd] = 0x1;
+        if(registers[rs] <registers[rt]) {
+            registers[rd] = 0x1;
         } else {
-            *registers[rd] = 0x0;
+            registers[rd] = 0x0;
         }
+        specialRegisters[0] += 4;
         return false;
 
     default:
@@ -73,7 +85,7 @@ bool r_instru(word instruction, word *registers[], word *specialRegisters[]) {
     }
 }
 
-bool j_instru(word instruction, word *registers[], word *specialRegisters[]) {
+bool j_instru(word instruction, word registers[], word specialRegisters[]) {
     byte opcode;
     word address, fourPcBits;
     opcode = (instruction & (0x3f << 26)) >> 26;
@@ -81,22 +93,22 @@ bool j_instru(word instruction, word *registers[], word *specialRegisters[]) {
 
     switch (opcode) {
         case 0x2: // j - jump
-            fourPcBits = ((*specialRegisters[0] + 4) & (0xf << 28)) >> 28;
-            *specialRegisters[0] = fourPcBits + (address << 2);
+            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         case 0x3: // jal - jump and link
-            *registers[31] = *specialRegisters[0] + 8;
-            fourPcBits = ((*specialRegisters[0] + 4) & (0xf << 28)) >> 28;
-            *specialRegisters[0] = fourPcBits + (address << 2);
+            registers[31] = specialRegisters[0] + 8;
+            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         default:
             return true;
     }
 }
 
-bool i_instru(word instruction, word *registers[], word *specialRegisters[], byte memory[]) {
+bool i_instru(word instruction, word registers[], word specialRegisters[], byte memory[]) {
     byte rs, rt, opcode;
-    word branchAddr, signExtImm, zeroExtImm, loadLeft1, loadLeft2, storeLeft;
+    word branchAddr, signExtImm, zeroExtImm, loadLeft, storeLeft;
     immediate imm;
     opcode = (instruction & (0x3f << 26)) >> 26;
     rs = (instruction & (0x1f << 21)) >> 21;
@@ -107,58 +119,73 @@ bool i_instru(word instruction, word *registers[], word *specialRegisters[], byt
         case 0x4: // beq - branch on equal
             if(registers[rs] == registers[rt]) {
                 branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
-                *specialRegisters[0] = *specialRegisters[0] + 4 + branchAddr;
+                specialRegisters[0] = specialRegisters[0] + 4 + branchAddr;
             }
             return false;
         case 0x5: // bnq - branch on not equal
             if(registers[rs] != registers[rt]) {
                 branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
-                *specialRegisters[0] = *specialRegisters[0] + 4 + branchAddr;
+                specialRegisters[0] = specialRegisters[0] + 4 + branchAddr;
             }
             return false;
         case 0x8: // addi - add immediate
-            *registers[rt] = *registers[rs] + imm;
+            registers[rt] = registers[rs] + imm;
+            specialRegisters[0] += 4;
             return false;
         case 0x3: // addiu - add immediate unsigned
-            *registers[rt] = *registers[rs] + (unsigned)imm;
+            registers[rt] = registers[rs] + (unsigned)imm;
+            specialRegisters[0] += 4;
             return false;
         case 0xa: // slti - set less than immediate
             signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            *registers[rt] = (*registers[rs] < signExtImm);
+            registers[rt] = (registers[rs] < signExtImm);
+            specialRegisters[0] += 4;
             return false;
         case 0xc: // andi - and immediate
             zeroExtImm = (word)imm;
-            *registers[rt] = *registers[rs] & zeroExtImm;
+            registers[rt] = registers[rs] & zeroExtImm;
+            specialRegisters[0] += 4;
             return false;
         case 0xd: // ori - or immediate
             zeroExtImm = (word)imm;
-            *registers[rt] = *registers[rs] | zeroExtImm;
+            registers[rt] = registers[rs] | zeroExtImm;
+            specialRegisters[0] += 4;
             return false;
         case 0xf: // lui - load upper immediate
-            *registers[rt] = (word)(imm << 16);
+            registers[rt] = (word)(imm << 16);
+            specialRegisters[0] += 4;
             return false;
         case 0x20: // lb - load byte
-            loadLeft1 = (((imm & (0x1 << 15)) >> 15) * 0xffffff) << 8;
-            loadLeft2 = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
-            *registers[rt] = loadLeft1 + memory[*registers[rs] + loadLeft2 + imm];
+            loadLeft = (((imm & (0x1 << 15)) >> 15) * 0xffffff) << 8;
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            registers[rt] = loadLeft + memory[registers[rs] + signExtImm];
+            specialRegisters[0] += 4;
             return false;
         case 0x21: // lh - load halfword
-            loadLeft1 = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
-            *registers[rt] = loadLeft1 + (immediate)memory[*registers[rs] + loadLeft1 + imm];
+            loadLeft = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            registers[rt] = loadLeft + (immediate)memory[registers[rs] + signExtImm];
+            specialRegisters[0] += 4;
             return false;
         case 0x23: // lw - load word
             signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            *registers[rt] = (word)memory[*registers[rs] + signExtImm];
+            registers[rt] = (word)memory[registers[rs] + signExtImm];
+            specialRegisters[0] += 4;
             return false;
         case 0x28: // sb - store byte
             signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            memory[*registers[rs] + signExtImm] = (byte)(*registers[rt]);
+            memory[registers[rs] + signExtImm] = (byte)(registers[rt]);
+            specialRegisters[0] += 4;
             return false;
         case 0x29: // sh - store halfword
-            printf("sh(%d) %d %d %d\n", opcode, rs, rt, imm);
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            *(immediate*)(memory + registers[rs] + signExtImm) = (immediate)(registers[rt]);
+            specialRegisters[0] += 4;
             return false;
         case 0x2b: // sw - store word
-            printf("sw(%d) %d %d %d\n", opcode, rs, rt, imm);
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            memory[registers[rs] + signExtImm] = registers[rt];
+            specialRegisters[0] += 4;
             return false;
         default:
             return true;
@@ -179,16 +206,18 @@ void memoryAlocattion(FILE *fp, FILE *fp1, byte* memory, int sizeMemory){
 }
 
 void printMemory(byte *memory) {
-    for (int i = 0; i < 32; i += 1) {
-        printf("$%-2d 0x%08x\n", i, *(word*)&memory[0x3fff - ((i + 1) * 4)]); 
-    }
-
     for (int i = 0; i <= 0x3ff0; i += 16) {
         printf("Mem[0x%08x] ", i);
-        printf("0x%08x ", *(word*)&memory[i]); 
-        printf("0x%08x ", *(word*)&memory[i+4]); 
-        printf("0x%08x ", *(word*)&memory[i+8]); 
+        printf("0x%08x\t", *(word*)&memory[i]); 
+        printf("0x%08x\t", *(word*)&memory[i+4]); 
+        printf("0x%08x\t", *(word*)&memory[i+8]); 
         printf("0x%08x\n", *(word*)&memory[i+12]); 
+    }
+}
+
+void printRegisters(word registers[]){
+    for (int i = 0; i < 32; i += 1) {
+        printf("$%-2d\t0x%08x\n", i, registers[i]); 
     }
 }
 
@@ -198,77 +227,80 @@ int main()
     FILE *fp1 = fopen("exemplo_data.bin", "rb");
     word instrucao, opcode, param_r_instr;
 
-    word *registers[32];
-    word *specialRegisters[3];
+    word registers[32] = {0};
+    word specialRegisters[3] = {0};
 
     byte memory[4096 * 4];
     memoryAlocattion(fp, fp1, memory, sizeof(memory));
     
 
-    registers[0] = (word *)&memory[0x3fff - 4]; // $zero 
-    registers[1] = (word *)&memory[0x3fff - 8]; // $at  
-    registers[2] = (word *)&memory[0x3fff - 12]; // $v0 
-    registers[3] = (word *)&memory[0x3fff - 16]; // $v1 
-    registers[4] = (word *)&memory[0x3fff - 20]; // $a0 
-    registers[5] = (word *)&memory[0x3fff - 24]; // $a1 
-    registers[6] = (word *)&memory[0x3fff - 28]; // $a2 
-    registers[7] = (word *)&memory[0x3fff - 32]; // $a3 
-    registers[8] = (word *)&memory[0x3fff - 36]; // $t0 
-    registers[9] = (word *)&memory[0x3fff - 40]; // $t1 
-    registers[10] = (word *)&memory[0x3fff - 44]; // $t2 
-    registers[11] = (word *)&memory[0x3fff - 48]; // $t3 
-    registers[12] = (word *)&memory[0x3fff - 52]; // $t4 
-    registers[13] = (word *)&memory[0x3fff - 56]; // $t5 
-    registers[14] = (word *)&memory[0x3fff - 60]; // $t6 
-    registers[15] = (word *)&memory[0x3fff - 64]; // $t7 
-    registers[16] = (word *)&memory[0x3fff - 68]; // $s0 
-    registers[17] = (word *)&memory[0x3fff - 72]; // $s1 
-    registers[18] = (word *)&memory[0x3fff - 76]; // $s2 
-    registers[19] = (word *)&memory[0x3fff - 80]; // $s3 
-    registers[20] = (word *)&memory[0x3fff - 84]; // $s4 
-    registers[21] = (word *)&memory[0x3fff - 88]; // $s5 
-    registers[22] = (word *)&memory[0x3fff - 92]; // $s6 
-    registers[23] = (word *)&memory[0x3fff - 96]; // $s7 
-    registers[24] = (word *)&memory[0x3fff - 100]; // $t8 
-    registers[25] = (word *)&memory[0x3fff - 104]; // $s9 
-    registers[26] = (word *)&memory[0x3fff - 108]; // $k0 
-    registers[27] = (word *)&memory[0x3fff - 112]; // $k1 
-    registers[28] = (word *)&memory[0x3fff - 116]; // $gp 
-    registers[29] = (word *)&memory[0x3fff - 120]; // $sp 
-    registers[30] = (word *)&memory[0x3fff - 124]; // $fp 
-    registers[31] = (word *)&memory[0x3fff - 128]; // $ra 
+    registers[0];  // $zero 
+    registers[1];  // $at  
+    registers[2];  // $v0 
+    registers[3];  // $v1 
+    registers[4];  // $a0 
+    registers[5];  // $a1 
+    registers[6];  // $a2 
+    registers[7];  // $a3 
+    registers[8];  // $t0 
+    registers[9];  // $t1 
+    registers[10];  // $t2 
+    registers[11];  // $t3 
+    registers[12];  // $t4 
+    registers[13];  // $t5 
+    registers[14];  // $t6 
+    registers[15];  // $t7 
+    registers[16];  // $s0 
+    registers[17];  // $s1 
+    registers[18];  // $s2 
+    registers[19];  // $s3 
+    registers[20];  // $s4 
+    registers[21];  // $s5 
+    registers[22];  // $s6 
+    registers[23];  // $s7 
+    registers[24];  // $t8 
+    registers[25];  // $s9 
+    registers[26];  // $k0 
+    registers[27];  // $k1 
+    registers[28] = 0x1800;  // $gp 
+    registers[29] = 0x00003ffc;  // $sp 
+    registers[30];  // $fp 
+    registers[31];  // $ra 
 
-    specialRegisters[0] = (word *)&memory[0x3fff - 132]; // pc
-    specialRegisters[1] = (word *)&memory[0x3fff - 136]; // hi
-    specialRegisters[2] = (word *)&memory[0x3fff - 140]; // lo
-
-    *registers[29] = 0x00003ffc;
-    *registers[28] = 0x1800;
+    specialRegisters[0] =  0; // pc
+    specialRegisters[1] =  0; // hi
+    specialRegisters[2] =  0; // lo
 
     if (fp == NULL)
     {
-        printf("Ihhh, deu erro.\n");
-        return 1;
+        printf("\nERROR: It was not possible to read the text file\n");
+        exit(1);
+    } else if(fp1 == NULL)
+    {
+        printf("\nERROR: It was not possible to read the data file\n");
+        exit(1);
     }
     long fileSize = calcFileSize(fp);
     
-    for(int i = 0; i < fileSize; i++) {
-        fread(&instrucao, 4, 1, fp);
-        printf("instrucao = %#x\n", instrucao);
+    for(;specialRegisters[0] <= 0x0fff;) {
+        instrucao = *(word*)&memory[specialRegisters[0]];
         opcode = (instrucao & (0x3f << 26)) >> 26;
-    
+        printf("Instrução: \n0x%08x\n", instrucao);
+        printf("PC: \n0x%08x\n", specialRegisters[0]);
         switch (opcode)
         {
         case 0x0: // R format
             param_r_instr = instrucao & 0x3ffffff;
             if(r_instru(param_r_instr, registers, specialRegisters)) {
-                raise(SIGFPE);
+                printf("\nERROR: R-Instruction - 0x%08x\n", instrucao);
+                exit(1);
             }
             break;
         case 0x2: // jal - jump and link
         case 0x3: // j - jump
             if(j_instru(instrucao, registers, specialRegisters)){
-                raise(SIGFPE);
+                printf("\nERROR: J-Instruction - 0x%08x\n", instrucao);
+                exit(1);
             }
             break;
         case 0x4: // beq - branch on equal
@@ -286,13 +318,16 @@ int main()
         case 0x29: // sh - store halfword
         case 0x2b: // sw - store word
             if(i_instru(instrucao, registers, specialRegisters, memory)){
-                raise(SIGFPE);
+                printf("\nERROR: I-Instruction - 0x%08x\n", instrucao);
+                exit(1);
             }
             break;
         default:
-            return false;
+            specialRegisters[0] += 4;
+
         }
     }
+    printRegisters(registers);
     printMemory(memory);
 
     fclose(fp);
