@@ -1,7 +1,6 @@
 #include "trab.h"
 
-bool r_instru(word instruction, word *registers, word *specialRegisters) {
-    registers[0] = 0x19;
+bool r_instru(word instruction, word *registers[], word *specialRegisters[]) {
     byte rs, rt, rd, shamt, funct;
     rs = (instruction & (0x1f << 21)) >> 21;
     rt = (instruction & (0x1f << 16)) >> 16;
@@ -12,11 +11,11 @@ bool r_instru(word instruction, word *registers, word *specialRegisters) {
     switch (funct)
     {
     case 0x00: // sll - shift left logical
-        printf("sll(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *registers[rs] << shamt;
         return false;
 
     case 0x02: // srl - shift right logical
-        printf("srl(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *registers[rs] >> shamt;
         return false;
 
     case 0x3: // sra - shift right arithmetic
@@ -24,44 +23,49 @@ bool r_instru(word instruction, word *registers, word *specialRegisters) {
         return false;
 
     case 0x08: // jr - jump register
-        printf("jr(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *specialRegisters[0] = *registers[rs];
         return false;
 
     case 0x10: // mfohi - move from high
-        printf("mfhi(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *specialRegisters[1];
         return false;
 
     case 0x12: // mfolo - move from low
-        printf("mflo(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *specialRegisters[2];
         return false;
 
     case 0x18: // multi - multiply
-        printf("multiply(%d) %d, %d, %d, , %d\n", rs, rt, rd, shamt, funct);
+        *specialRegisters[1] = ((int64_t)(*registers[rs] * *registers[rs]) & ((int64_t)0xffffffff << 32)) >> 32;
+        *specialRegisters[2] = (int64_t)(*registers[rs] * *registers[rs]) & 0xffffffff;
         return false;
 
     case 0x1a: // div - divide
-        printf("divide(%d) %d, %d, %d, , %d\n", rs, rt, rd, shamt, funct);
+        *specialRegisters[1] = *registers[rs] % *registers[rt];
+        *specialRegisters[2] = *registers[rs] / *registers[rt];
         return false;
 
     case 0x20: // add - add
-        printf("add(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
-        // registers[rd] = registers[rs];
+        *registers[rd] = *registers[rs] + *registers[rt];
         return false;
 
     case 0x22: // sub - substract
-        printf("sub(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *registers[rs] - *registers[rt];
         return false;
 
     case 0x24: // and - and
-        printf("and(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *registers[rs] & *registers[rt];
         return false;
 
     case 0x25: // or - or 
-        printf("or(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        *registers[rd] = *registers[rs] | *registers[rt];
         return false;
 
     case 0x2a: // slt - set less than
-        printf("slt(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        if(registers[rs] < registers[rt]) {
+            *registers[rd] = 0x1;
+        } else {
+            *registers[rd] = 0x0;
+        }
         return false;
 
     default:
@@ -69,26 +73,30 @@ bool r_instru(word instruction, word *registers, word *specialRegisters) {
     }
 }
 
-bool j_instru(word instruction) {
+bool j_instru(word instruction, word *registers[], word *specialRegisters[]) {
     byte opcode;
-    word address;
+    word address, fourPcBits;
     opcode = (instruction & (0x3f << 26)) >> 26;
     address = instruction & 0x3ffffff;
 
     switch (opcode) {
         case 0x2: // j - jump
-            printf("j(%d) %d\n", opcode, address);
+            fourPcBits = ((*specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            *specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         case 0x3: // jal - jump and link
-            printf("jal(%d) %d\n", opcode, address);
+            *registers[31] = *specialRegisters[0] + 8;
+            fourPcBits = ((*specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            *specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         default:
             return true;
     }
 }
 
-bool i_instru(word instruction) {
+bool i_instru(word instruction, word *registers[], word *specialRegisters[], byte memory[]) {
     byte rs, rt, opcode;
+    word branchAddr, signExtImm, zeroExtImm, loadLeft1, loadLeft2, storeLeft;
     immediate imm;
     opcode = (instruction & (0x3f << 26)) >> 26;
     rs = (instruction & (0x1f << 21)) >> 21;
@@ -97,40 +105,54 @@ bool i_instru(word instruction) {
 
     switch (opcode) {
         case 0x4: // beq - branch on equal
-            printf("beq(%d) %d %d %d\n", opcode, rs, rt, imm);
+            if(registers[rs] == registers[rt]) {
+                branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
+                *specialRegisters[0] = *specialRegisters[0] + 4 + branchAddr;
+            }
             return false;
         case 0x5: // bnq - branch on not equal
-            printf("bnq(%d) %d %d %d\n", opcode, rs, rt, imm);
+            if(registers[rs] != registers[rt]) {
+                branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
+                *specialRegisters[0] = *specialRegisters[0] + 4 + branchAddr;
+            }
             return false;
         case 0x8: // addi - add immediate
-            printf("addi(%d) %d %d %d\n", opcode, rs, rt, imm);
+            *registers[rt] = *registers[rs] + imm;
             return false;
         case 0x3: // addiu - add immediate unsigned
-            printf("addiu(%d) %d %d %d\n", opcode, rs, rt, imm);
+            *registers[rt] = *registers[rs] + (unsigned)imm;
             return false;
         case 0xa: // slti - set less than immediate
-            printf("slti(%d) %d %d %d\n", opcode, rs, rt, imm);
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            *registers[rt] = (*registers[rs] < signExtImm);
             return false;
         case 0xc: // andi - and immediate
-            printf("andi(%d) %d %d %d\n", opcode, rs, rt, imm);
+            zeroExtImm = (word)imm;
+            *registers[rt] = *registers[rs] & zeroExtImm;
             return false;
         case 0xd: // ori - or immediate
-            printf("ori(%d) %d %d %d\n", opcode, rs, rt, imm);
+            zeroExtImm = (word)imm;
+            *registers[rt] = *registers[rs] | zeroExtImm;
             return false;
-        case 0xf: // liu - load upper immediate
-            printf("liu(%d) %d %d %d\n", opcode, rs, rt, imm);
+        case 0xf: // lui - load upper immediate
+            *registers[rt] = (word)(imm << 16);
             return false;
         case 0x20: // lb - load byte
-            printf("lb(%d) %d %d %d\n", opcode, rs, rt, imm);
+            loadLeft1 = (((imm & (0x1 << 15)) >> 15) * 0xffffff) << 8;
+            loadLeft2 = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
+            *registers[rt] = loadLeft1 + memory[*registers[rs] + loadLeft2 + imm];
             return false;
         case 0x21: // lh - load halfword
-            printf("lh(%d) %d %d %d\n", opcode, rs, rt, imm);
+            loadLeft1 = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
+            *registers[rt] = loadLeft1 + (immediate)memory[*registers[rs] + loadLeft1 + imm];
             return false;
         case 0x23: // lw - load word
-            printf("lw(%d) %d %d %d\n", opcode, rs, rt, imm);
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            *registers[rt] = (word)memory[*registers[rs] + signExtImm];
             return false;
         case 0x28: // sb - store byte
-            printf("sb(%d) %d %d %d\n", opcode, rs, rt, imm);
+            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            memory[*registers[rs] + signExtImm] = (byte)(*registers[rt]);
             return false;
         case 0x29: // sh - store halfword
             printf("sh(%d) %d %d %d\n", opcode, rs, rt, imm);
@@ -239,13 +261,13 @@ int main()
         {
         case 0x0: // R format
             param_r_instr = instrucao & 0x3ffffff;
-            if(r_instru(param_r_instr, *registers, *specialRegisters)) {
+            if(r_instru(param_r_instr, registers, specialRegisters)) {
                 raise(SIGFPE);
             }
             break;
         case 0x2: // jal - jump and link
         case 0x3: // j - jump
-            if(j_instru(instrucao)){
+            if(j_instru(instrucao, registers, specialRegisters)){
                 raise(SIGFPE);
             }
             break;
@@ -263,7 +285,7 @@ int main()
         case 0x28: // sb - store byte
         case 0x29: // sh - store halfword
         case 0x2b: // sw - store word
-            if(i_instru(instrucao)){
+            if(i_instru(instrucao, registers, specialRegisters, memory)){
                 raise(SIGFPE);
             }
             break;
