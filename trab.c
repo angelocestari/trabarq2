@@ -1,11 +1,20 @@
 #include "trab.h"
 
+bool validDataAdress(word memoryAdress) {
+    // printf("Endereço: 0x%08x\n", memoryAdress);
+    if(memoryAdress >= 0x2000 && memoryAdress <= 0x2fff) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool r_instru(word instruction, word registers[], word specialRegisters[]) {
     byte rs, rt, rd, shamt, funct;
-    rs = (instruction & (0x1f << 21)) >> 21;
-    rt = (instruction & (0x1f << 16)) >> 16;
-    rd = (instruction & (0x1f << 11)) >> 11;
-    shamt = (instruction & (0x1f << 6)) >> 6;
+    rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
+    rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
+    rd = ((instruction & (0x1f << 11)) >> 11) & 0x1f;
+    shamt = ((instruction & (0x1f << 6)) >> 6) & 0x1f;
     funct = instruction & 0x3f;
 
     switch (funct)
@@ -88,17 +97,17 @@ bool r_instru(word instruction, word registers[], word specialRegisters[]) {
 bool j_instru(word instruction, word registers[], word specialRegisters[]) {
     byte opcode;
     word address, fourPcBits;
-    opcode = (instruction & (0x3f << 26)) >> 26;
+    opcode = ((instruction & (0x3f << 26)) >> 26) & 0x3f;
     address = instruction & 0x3ffffff;
 
     switch (opcode) {
         case 0x2: // j - jump
-            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28));
             specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         case 0x3: // jal - jump and link
-            registers[31] = specialRegisters[0] + 8;
-            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28)) >> 28;
+            registers[31] = specialRegisters[0] + 4;
+            fourPcBits = ((specialRegisters[0] + 4) & (0xf << 28));
             specialRegisters[0] = fourPcBits + (address << 2);
             return false;
         default:
@@ -110,34 +119,37 @@ bool i_instru(word instruction, word registers[], word specialRegisters[], byte 
     byte rs, rt, opcode;
     word branchAddr, signExtImm, zeroExtImm, loadLeft, storeLeft;
     immediate imm;
-    opcode = (instruction & (0x3f << 26)) >> 26;
-    rs = (instruction & (0x1f << 21)) >> 21;
-    rt = (instruction & (0x1f << 16)) >> 16;
+    opcode = ((instruction & (0x3f << 26)) >> 26) & 0x3f;
+    rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
+    rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
     imm = instruction & 0xffff;
-
     switch (opcode) {
         case 0x4: // beq - branch on equal
             if(registers[rs] == registers[rt]) {
-                branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
+                branchAddr = (((((imm & (0x1 << 15)) >> 15) & 0x1) * 0x3fff) << 18) + (imm << 2);
                 specialRegisters[0] = specialRegisters[0] + 4 + branchAddr;
+            } else {
+                specialRegisters[0] = specialRegisters[0] + 4;
             }
             return false;
         case 0x5: // bnq - branch on not equal
             if(registers[rs] != registers[rt]) {
-                branchAddr = ((((imm & (0x1 << 15)) >> 15) * 0x3fff) << 18) + (imm << 2);
+                branchAddr = (((((imm & (0x1 << 15)) >> 15) & 0x1) * 0x3fff) << 18) + (imm << 2);
                 specialRegisters[0] = specialRegisters[0] + 4 + branchAddr;
+            } else {
+                specialRegisters[0] = specialRegisters[0] + 4;
             }
             return false;
         case 0x8: // addi - add immediate
             registers[rt] = registers[rs] + imm;
             specialRegisters[0] += 4;
             return false;
-        case 0x3: // addiu - add immediate unsigned
+        case 0x9: // addiu - add immediate unsigned
             registers[rt] = registers[rs] + (unsigned)imm;
             specialRegisters[0] += 4;
             return false;
         case 0xa: // slti - set less than immediate
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffff) + imm;
             registers[rt] = (registers[rs] < signExtImm);
             specialRegisters[0] += 4;
             return false;
@@ -156,45 +168,75 @@ bool i_instru(word instruction, word registers[], word specialRegisters[], byte 
             specialRegisters[0] += 4;
             return false;
         case 0x20: // lb - load byte
-            loadLeft = (((imm & (0x1 << 15)) >> 15) * 0xffffff) << 8;
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            registers[rt] = loadLeft + memory[registers[rs] + signExtImm];
-            specialRegisters[0] += 4;
+            loadLeft = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffffff) << 8;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffff) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)) {
+                registers[rt] = loadLeft + memory[registers[rs] + signExtImm];
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for lb\n");
+                exit(1);
+            }
             return false;
         case 0x21: // lh - load halfword
-            loadLeft = (((imm & (0x1 << 15)) >> 15) * 0xffff) << 16;
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            registers[rt] = loadLeft + (immediate)memory[registers[rs] + signExtImm];
-            specialRegisters[0] += 4;
+            loadLeft = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffff) << 16;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) * 0xffff) & 0x1) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)) {
+                registers[rt] = loadLeft + *(immediate*)&memory[registers[rs] + signExtImm];
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for lh\n");
+                exit(1);
+            }
             return false;
         case 0x23: // lw - load word
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            registers[rt] = (word)memory[registers[rs] + signExtImm];
-            specialRegisters[0] += 4;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) * 0xffff) & 0x1) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)){
+                registers[rt] = *(word*)&memory[registers[rs] + signExtImm];
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for lw\n");
+                exit(1);
+            }
             return false;
         case 0x28: // sb - store byte
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            memory[registers[rs] + signExtImm] = (byte)(registers[rt]);
-            specialRegisters[0] += 4;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) * 0xffff) & 0x1) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)){
+                memory[registers[rs] + signExtImm] = (byte)(registers[rt]);
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for sb\n");
+                exit(1);
+            }
             return false;
         case 0x29: // sh - store halfword
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            *(immediate*)(memory + registers[rs] + signExtImm) = (immediate)(registers[rt]);
-            specialRegisters[0] += 4;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) * 0xffff) & 0x1) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)){
+                *(immediate*)&memory[registers[rs] + signExtImm]= (immediate)registers[rt];
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for sh\n");
+                exit(1);
+            }
             return false;
         case 0x2b: // sw - store word
-            signExtImm = (((imm & (0x1 << 15)) >> 15) * 0xffff) + imm;
-            memory[registers[rs] + signExtImm] = registers[rt];
-            specialRegisters[0] += 4;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) * 0xffff) & 0x1) + imm;
+            if(validDataAdress(registers[rs] + signExtImm)){
+                *(word*)&memory[registers[rs] + signExtImm] = registers[rt];
+                specialRegisters[0] += 4;
+            } else {
+                printf("\nERROR: Invalid adress for sw\n");
+                exit(1);
+            }
             return false;
         default:
             return true;
     }
 }
 
-long calcFileSize(FILE *fp) {
+long calcAddrLastInstr(FILE *fp) {
     fseek(fp, 0L, SEEK_END);
-    long fileSize = ftell(fp) / 4;
+    long fileSize = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
     return fileSize;
 }
@@ -219,6 +261,12 @@ void printRegisters(word registers[]){
     for (int i = 0; i < 32; i += 1) {
         printf("$%-2d\t0x%08x\n", i, registers[i]); 
     }
+}
+
+void print_binary(unsigned int n) {
+    if (n > 1)
+        print_binary(n >> 1);
+    printf("%d", n & 1);
 }
 
 int main()
@@ -280,13 +328,24 @@ int main()
         printf("\nERROR: It was not possible to read the data file\n");
         exit(1);
     }
-    long fileSize = calcFileSize(fp);
     
-    for(;specialRegisters[0] <= 0x0fff;) {
+    long lastFileAdrr = calcAddrLastInstr(fp);
+
+    for(;specialRegisters[0] <= 0x0fff && specialRegisters[0] < lastFileAdrr;) {
+        if(registers[29] < 0x3000) {
+            printf("\nERROR: Stack overflow\n");
+            exit(1);
+        }
         instrucao = *(word*)&memory[specialRegisters[0]];
-        opcode = (instrucao & (0x3f << 26)) >> 26;
-        printf("Instrução: \n0x%08x\n", instrucao);
-        printf("PC: \n0x%08x\n", specialRegisters[0]);
+        opcode = ((instrucao & (0x3f << 26)) >> 26) & 0x3f;
+        // print_binary(opcode);
+        // printf("\n");
+        // print_binary(instrucao);
+        // printf("\n");
+        // printf("Opcode: %d\n", opcode);
+        // printf("Instrução: \n0x%08x\n", instrucao);
+        // printf("PC: \n0x%08x\n", specialRegisters[0]);
+        // printf("========================================================\n");
         switch (opcode)
         {
         case 0x0: // R format
@@ -324,7 +383,6 @@ int main()
             break;
         default:
             specialRegisters[0] += 4;
-
         }
     }
     printRegisters(registers);
