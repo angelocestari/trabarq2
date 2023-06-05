@@ -12,7 +12,6 @@ void printMemory(byte *memory) {
 
 void printBinary(unsigned int num) {
     int i;
-    printf("Binary representation of %u is: ", num);
     for (i = 31; i >= 0; i--) {
         if ((num >> i) & 1)
             printf("1");
@@ -28,7 +27,6 @@ void printRegisters(word registers[]){
 }
 
 bool validDataAdress(word memoryAdress) {
-    // printf("Endereço: 0x%08x\n", memoryAdress);
     if(memoryAdress >= 0x2000 && memoryAdress <= 0x2fff) {
         return true;
     } else {
@@ -39,13 +37,15 @@ bool validDataAdress(word memoryAdress) {
 void syscall(word instruction, word registers[], word specialRegisters[], byte memory[]){
     byte rs, rt, rd, shamt, funct;
     word address;
+    char str[registers[5]]; // $a1
+    char character;
+
     rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
     rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
     rd = ((instruction & (0x1f << 11)) >> 11) & 0x1f;
     shamt = ((instruction & (0x1f << 6)) >> 6) & 0x1f;
     funct = instruction & 0x3f;
-    char str[100]; // $a1
-    char character;
+    
     switch(registers[2]) // $v0
     {
         case 1: // print integer
@@ -53,14 +53,14 @@ void syscall(word instruction, word registers[], word specialRegisters[], byte m
             break;
         case 4: // print string
             address = registers[4];
-            printf("%s", (word*)&memory[address]);
+            printf("%s", (char*)&memory[address]);
             break;
         case 5: // read integer
             scanf("%d", &registers[2]);
+            character = getchar();
             break;
         case 8: // read string
-            fgets(&memory[registers[4]], sizeof(str), stdin);
-            printf("String lida: %s\n", (word*)&memory[registers[4]]);
+            fgets((char*)&memory[registers[4]], sizeof(str), stdin);
             break;
         case 10: // exit
             printRegisters(registers);
@@ -92,6 +92,7 @@ void syscall(word instruction, word registers[], word specialRegisters[], byte m
 bool r_instru(word instruction, word registers[], word specialRegisters[], byte memory[]) {
     byte rs, rt, rd, shamt, funct;
     word address;
+
     rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
     rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
     rd = ((instruction & (0x1f << 11)) >> 11) & 0x1f;
@@ -101,17 +102,17 @@ bool r_instru(word instruction, word registers[], word specialRegisters[], byte 
     switch (funct)
     {
     case 0x00: // sll - shift left logical
-        registers[rd] = registers[rs] << shamt;
+        registers[rd] = registers[rt] << shamt;
         specialRegisters[0] += 4;
         return false;
 
     case 0x02: // srl - shift right logical
-        registers[rd] = registers[rs] >> shamt;
+        registers[rd] = (unsigned int)registers[rt] >> shamt;
         specialRegisters[0] += 4;
         return false;
 
     case 0x3: // sra - shift right arithmetic
-        printf("sra(%d) %d, %d, %d, %d, \n", rs, rt, rd, shamt, funct);
+        registers[rd] = registers[rt] >> shamt;
         specialRegisters[0] += 4;
         return false;
 
@@ -165,11 +166,7 @@ bool r_instru(word instruction, word registers[], word specialRegisters[], byte 
         return false;
 
     case 0x2a: // slt - set less than
-        if(registers[rs] <registers[rt]) {
-            registers[rd] = 0x1;
-        } else {
-            registers[rd] = 0x0;
-        }
+        registers[rd] = (registers[rs] < registers[rt]);
         specialRegisters[0] += 4;
         return false;
 
@@ -181,6 +178,7 @@ bool r_instru(word instruction, word registers[], word specialRegisters[], byte 
 bool j_instru(word instruction, word registers[], word specialRegisters[]) {
     byte opcode;
     word address, fourPcBits;
+
     opcode = ((instruction & (0x3f << 26)) >> 26) & 0x3f;
     address = instruction & 0x3ffffff;
 
@@ -203,10 +201,12 @@ bool i_instru(word instruction, word registers[], word specialRegisters[], byte 
     byte rs, rt, opcode;
     word branchAddr, signExtImm, zeroExtImm, loadLeft, storeLeft;
     immediate imm;
+
     opcode = ((instruction & (0x3f << 26)) >> 26) & 0x3f;
     rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
     rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
     imm = instruction & 0xffff;
+
     switch (opcode) {
         case 0x4: // beq - branch on equal
             if(registers[rs] == registers[rt]) {
@@ -225,11 +225,13 @@ bool i_instru(word instruction, word registers[], word specialRegisters[], byte 
             }
             return false;
         case 0x8: // addi - add immediate
-            registers[rt] = registers[rs] + imm;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffff) + imm;
+            registers[rt] = registers[rs] + signExtImm;
             specialRegisters[0] += 4;
             return false;
         case 0x9: // addiu - add immediate unsigned
-            registers[rt] = registers[rs] + (unsigned int)imm;
+            signExtImm = ((((imm & (0x1 << 15)) >> 15) & 0x1) * 0xffff) + imm;
+            registers[rt] = registers[rs] + (unsigned int)signExtImm;
             specialRegisters[0] += 4;
             return false;
         case 0xa: // slti - set less than immediate
@@ -343,7 +345,6 @@ int main()
     byte memory[4096 * 4];
     memoryAlocattion(fp, fp1, memory, sizeof(memory));
     
-
     registers[0];  // $zero 
     registers[1];  // $at  
     registers[2];  // $v0 
@@ -394,19 +395,17 @@ int main()
     long lastFileAdrr = calcAddrLastInstr(fp);
 
     for(;specialRegisters[0] <= 0x0fff && specialRegisters[0] < lastFileAdrr;) {
+
         if(registers[29] < 0x3000) {
             printf("\nERROR: Stack overflow\n");
             exit(1);
         }
+
         instrucao = *(word*)&memory[specialRegisters[0]];
         opcode = ((instrucao & (0x3f << 26)) >> 26) & 0x3f;
-        // print_binary(opcode);
-        // printf("\n");
-        // print_binary(instrucao);
-        // printf("\n");
         // printf("Opcode: %d\n", opcode);
-        // printf("Instrução: \n0x%08x\n", instrucao);
-        // printf("PC: \n0x%08x\n", specialRegisters[0]);
+        // printf("Instrução: 0x%08x\n", instrucao);
+        // printf("PC: 0x%08x\n", specialRegisters[0]);
         // printf("========================================================\n");
         switch (opcode)
         {
@@ -447,19 +446,11 @@ int main()
             specialRegisters[0] += 4;
         }
     }
+    printf("\n");
     printRegisters(registers);
     printMemory(memory);
 
     fclose(fp);
-
-    //  OP     RS   RT    IMMEDIATE
-    // ,--6-,,-5-,,-5-,,-------16-----, I
-    // ,--6-,,-5-,,-5-,,-5-,,-5-,,--6-, R
-    // ,--6-,,-----------26-----------, J
-    // 11111100111111111011110100100011
-    // 00000011111111111111111111111111
-
-    
 
     return 0;
 }
