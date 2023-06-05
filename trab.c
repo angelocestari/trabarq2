@@ -1,5 +1,32 @@
 #include "trab.h"
 
+void printMemory(byte *memory) {
+    for (int i = 0; i <= 0x3ff0; i += 16) {
+        printf("Mem[0x%08x] ", i);
+        printf("0x%08x\t", *(word*)&memory[i]); 
+        printf("0x%08x\t", *(word*)&memory[i+4]); 
+        printf("0x%08x\t", *(word*)&memory[i+8]); 
+        printf("0x%08x\n", *(word*)&memory[i+12]); 
+    }
+}
+
+void printBinary(unsigned int num) {
+    int i;
+    printf("Binary representation of %u is: ", num);
+    for (i = 31; i >= 0; i--) {
+        if ((num >> i) & 1)
+            printf("1");
+        else
+            printf("0");
+    }
+}
+
+void printRegisters(word registers[]){
+    for (int i = 0; i < 32; i += 1) {
+        printf("$%-2d\t0x%08x\n", i, registers[i]); 
+    }
+}
+
 bool validDataAdress(word memoryAdress) {
     // printf("Endereço: 0x%08x\n", memoryAdress);
     if(memoryAdress >= 0x2000 && memoryAdress <= 0x2fff) {
@@ -9,8 +36,62 @@ bool validDataAdress(word memoryAdress) {
     }
 }
 
-bool r_instru(word instruction, word registers[], word specialRegisters[]) {
+void syscall(word instruction, word registers[], word specialRegisters[], byte memory[]){
     byte rs, rt, rd, shamt, funct;
+    word address;
+    rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
+    rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
+    rd = ((instruction & (0x1f << 11)) >> 11) & 0x1f;
+    shamt = ((instruction & (0x1f << 6)) >> 6) & 0x1f;
+    funct = instruction & 0x3f;
+    char str[100]; // $a1
+    char character;
+    switch(registers[2]) // $v0
+    {
+        case 1: // print integer
+            printf("%d", registers[4]);
+            break;
+        case 4: // print string
+            address = registers[4];
+            printf("%s", (word*)&memory[address]);
+            break;
+        case 5: // read integer
+            scanf("%d", &registers[2]);
+            break;
+        case 8: // read string
+            fgets(&memory[registers[4]], sizeof(str), stdin);
+            printf("String lida: %s\n", (word*)&memory[registers[4]]);
+            break;
+        case 10: // exit
+            printRegisters(registers);
+            printMemory(memory);
+            exit(0);
+            break;
+        case 11: // print character
+            printf("%c", registers[4]);
+            break;
+        case 12: // read character
+            character = getchar();
+            registers[2] = (word)character;
+            break;
+        case 34: // print integer in hexadecimal
+            printf("0x%08x", registers[4]);
+            break;
+        case 35: // print integer in binary
+            printBinary(registers[4]);
+            break;
+        case 36: // print as unsigned
+            printf("%u", (unsigned int)registers[4]);
+            break;
+        default:
+            printf("\nERROR: Invalid adress for sb\n");
+            exit(1);
+    }
+}
+
+bool r_instru(word instruction, word registers[], word specialRegisters[], byte memory[]) {
+    byte rs, rt, rd, shamt, funct;
+    word address;
     rs = ((instruction & (0x1f << 21)) >> 21) & 0x1f;
     rt = ((instruction & (0x1f << 16)) >> 16) & 0x1f;
     rd = ((instruction & (0x1f << 11)) >> 11) & 0x1f;
@@ -37,7 +118,10 @@ bool r_instru(word instruction, word registers[], word specialRegisters[]) {
     case 0x08: // jr - jump register
         specialRegisters[0] = registers[rs];
         return false;
-
+    case 0xc: // syscall
+        syscall(instruction, registers, specialRegisters, memory);
+        specialRegisters[0] += 4;
+        return false;
     case 0x10: // mfohi - move from high
         registers[rd] = specialRegisters[1];
         specialRegisters[0] += 4;
@@ -145,7 +229,7 @@ bool i_instru(word instruction, word registers[], word specialRegisters[], byte 
             specialRegisters[0] += 4;
             return false;
         case 0x9: // addiu - add immediate unsigned
-            registers[rt] = registers[rs] + (unsigned)imm;
+            registers[rt] = registers[rs] + (unsigned int)imm;
             specialRegisters[0] += 4;
             return false;
         case 0xa: // slti - set less than immediate
@@ -247,28 +331,6 @@ void memoryAlocattion(FILE *fp, FILE *fp1, byte* memory, int sizeMemory){
     fread(&memory[0x2000], sizeof(byte), (sizeMemory / 4), fp1);
 }
 
-void printMemory(byte *memory) {
-    for (int i = 0; i <= 0x3ff0; i += 16) {
-        printf("Mem[0x%08x] ", i);
-        printf("0x%08x\t", *(word*)&memory[i]); 
-        printf("0x%08x\t", *(word*)&memory[i+4]); 
-        printf("0x%08x\t", *(word*)&memory[i+8]); 
-        printf("0x%08x\n", *(word*)&memory[i+12]); 
-    }
-}
-
-void printRegisters(word registers[]){
-    for (int i = 0; i < 32; i += 1) {
-        printf("$%-2d\t0x%08x\n", i, registers[i]); 
-    }
-}
-
-void print_binary(unsigned int n) {
-    if (n > 1)
-        print_binary(n >> 1);
-    printf("%d", n & 1);
-}
-
 int main()
 {
     FILE *fp = fopen("exemplo_text.bin", "rb");
@@ -350,7 +412,7 @@ int main()
         {
         case 0x0: // R format
             param_r_instr = instrucao & 0x3ffffff;
-            if(r_instru(param_r_instr, registers, specialRegisters)) {
+            if(r_instru(param_r_instr, registers, specialRegisters, memory)) {
                 printf("\nERROR: R-Instruction - 0x%08x\n", instrucao);
                 exit(1);
             }
