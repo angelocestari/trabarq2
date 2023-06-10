@@ -1,0 +1,23 @@
+java -jar Mars4_5.jar nc mc CompactTextAtZero \$0 \$1 \$2 \$3 \$4 \$5 \$6 \$7 \$8 \$9 \$10 \$11 \$12 \$13 \$14 \$15 \$16 \$17 \$18 \$19 \$20 \$21 \$22 \$23 \$24 \$25 \$26 \$27 \$28 \$29 \$30 \$31 0x0-0x3ffc entrada.asm
+
+java -jar Mars4_5.jar nc mc CompactTextAtZero $0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11 $12 $13 $14 $15 $16 $17 $18 $19 $20 $21 $22 $23 $24 $25 $26 $27 $28 $29 $30 $31 0x0-0x3ffc entrada.asm
+
+java -jar Mars4_5.jar nc mc CompactTextAtZero $0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11 $12 $13 $14 $15 $16 $17 $18 $19 $20 $21 $22 $23 $24 $25 $26 $27 $28 $29 $30 $31 0x0-0x3ffc demo.asm > resultado.txt
+
+java -jar Mars4_5.jar dump .data Binary exemplo_data.bin nc mc CompactTextAtZero $0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11 $12 $13 $14 $15 $16 $17 $18 $19 $20 $21 $22 $23 $24 $25 $26 $27 $28 $29 $30 $31 0x0-0x3ffc demo.asm > resultado.txt
+
+java -jar Mars4_5.jar dump .data Binary exemplo_data.bin nc mc CompactTextAtZero \$0 \$1 \$2 \$3 \$4 \$5 \$6 \$7 \$8 \$9 \$10 \$11 \$12 \$13 \$14 \$15 \$16 \$17 \$18 \$19 \$20 \$21 \$22 \$23 \$24 \$25 \$26 \$27 \$28 \$29 \$30 \$31 0x0-0x3ffc demo.asm > resultado.txt
+
+./emulador exemplo_text.bin exemplo_data.bin > exemplo_out.txt
+
+-mips32 -Wall -Wextra -Werror
+
+gcc -o emulador trab.c
+
+java -jar Mars4_5.jar a dump .text Binary exemplo_text.bin mips.asm
+
+java -jar Mars4_5.jar dump .data Binary exemplo_data.bin nc mc CompactTextAtZero $0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11 $12 $13 $14 $15 $16 $17 $18 $19 $20 $21 $22 $23 $24 $25 $26 $27 $28 $29 $30 $31 0x0-0x3ffc mips.asm > resultado.txt
+
+java -jar Mars4_5.jar dump .data Binary exemplo_data.bin nc mc CompactTextAtZero \$0 \$1 \$2 \$3 \$4 \$5 \$6 \$7 \$8 \$9 \$10 \$11 \$12 \$13 \$14 \$15 \$16 \$17 \$18 \$19 \$20 \$21 \$22 \$23 \$24 \$25 \$26 \$27 \$28 \$29 \$30 \$31 0x0-0x3ffc mips.asm > resultado.txt
+
+java -jar Mars4_5.jar nc mc CompactTextAtZero 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 0x0-0x3ffc demo.asm > resultado.txt
